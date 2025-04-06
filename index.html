@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>6 nimmt! Score Tracker (Reverse)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles if needed */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Style for highlighting the winner */
+        .winner {
+            background-color: #a7f3d0; /* Tailwind green-200 */
+            font-weight: bold;
+        }
+        /* Style for indicating player reached zero or below */
+        .score-zero-indicator {
+             background-color: #fecaca; /* Tailwind red-200 */
+             font-weight: bold;
+        }
+        /* Ensure number inputs don't have excessive width, especially on mobile */
+        input[type=number] {
+            max-width: 70px; /* Slightly reduced max-width */
+            min-width: 60px; /* Ensure a minimum tap area */
+        }
+        /* Ensure text inputs take full width */
+        input[type=text] {
+             width: 100%;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-4 md:p-8">
+    <div class="container mx-auto max-w-4xl bg-white p-4 sm:p-6 rounded-lg shadow-md">
+
+        <h1 class="text-xl md:text-2xl font-bold mb-4 md:mb-6 text-center text-gray-700">6 nimmt! Score Tracker (Reverse Scoring)</h1>
+        <p class="text-sm text-center text-gray-500 mb-6">Players start at 66 points. Scores are subtracted. Game ends when a player reaches 0 or less. Highest score wins.</p>
+
+        <div id="setup-section" class="mb-6 p-4 border border-gray-200 rounded-md bg-gray-50">
+            <label for="num-players" class="block text-sm font-medium text-gray-700 mb-2">Number of Players (2-10):</label>
+            <div class="flex flex-wrap items-center gap-2">
+                <input type="number" id="num-players" min="2" max="10" value="4" class="block w-20 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2">
+                <button id="setup-button" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 flex-shrink-0">Set Up Game</button>
+            </div>
+            <p id="setup-error" class="text-red-500 text-sm mt-2"></p>
+        </div>
+
+        <div id="player-names-section" class="hidden mb-6 p-4 border border-gray-200 rounded-md bg-gray-50">
+             <h2 class="text-lg md:text-xl font-semibold mb-3 text-gray-700">Enter Player Names:</h2>
+             <div id="player-name-inputs" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                </div>
+            <button id="start-game-button" class="w-full sm:w-auto px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">Start Game</button>
+        </div>
+
+        <div id="score-section" class="hidden">
+             <h2 class="text-lg md:text-xl font-semibold mb-4 text-gray-700">Scoreboard</h2>
+
+            <div id="score-input-row" class="mb-4 p-4 border border-blue-200 rounded-md bg-blue-50">
+                 <h3 class="text-md font-medium mb-3 text-gray-600">Enter Bull Points for Round <span id="current-round">1</span> (to subtract):</h3>
+                 <div id="round-inputs" class="flex flex-wrap gap-3 sm:gap-4 items-end">
+                     </div>
+                 <button id="add-round-button" class="w-full sm:w-auto mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Subtract Round Scores</button>
+                 <p id="round-error" class="text-red-500 text-sm mt-2"></p>
+            </div>
+
+            <div class="overflow-x-auto border border-gray-300 rounded-md">
+                <table id="score-table" class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-100">
+                        <tr id="table-header-row">
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-300 whitespace-nowrap">Round</th>
+                            </tr>
+                    </thead>
+                    <tbody id="score-table-body" class="bg-white divide-y divide-gray-200">
+                        <tr id="initial-score-row">
+                             <td class="px-3 py-2 text-left text-sm font-medium text-gray-700 border-r border-gray-300 whitespace-nowrap">Start</td>
+                            </tr>
+                        </tbody>
+                    <tfoot class="bg-gray-100 font-bold">
+                         <tr id="total-score-row">
+                             <td class="px-3 py-2 text-left text-sm text-gray-700 border-r border-gray-300 whitespace-nowrap">Remaining</td>
+                            </tr>
+                    </tfoot>
+                </table>
+            </div>
+
+             <div id="winner-display" class="hidden mt-6 p-4 border border-green-300 rounded-md bg-green-100 text-center">
+                 <h3 class="text-lg md:text-xl font-bold text-green-800">Game Over!</h3>
+                <p id="winner-text" class="text-base md:text-lg text-green-700"></p>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- Global Variables ---
+        const STARTING_SCORE = 66;
+        const LOSING_SCORE_LIMIT = 0; // Game ends when someone reaches this score or less
+        let players = []; // Array to hold player objects: { name: '...', scores: [], total: STARTING_SCORE }
+        let roundNumber = 1;
+        let gameOver = false;
+
+
+        // --- DOM Elements ---
+        const setupSection = document.getElementById('setup-section');
+        const numPlayersInput = document.getElementById('num-players');
+        const setupButton = document.getElementById('setup-button');
+        const setupError = document.getElementById('setup-error');
+
+        const playerNamesSection = document.getElementById('player-names-section');
+        const playerNameInputsContainer = document.getElementById('player-name-inputs');
+        const startGameButton = document.getElementById('start-game-button');
+
+        const scoreSection = document.getElementById('score-section');
+        const scoreInputRow = document.getElementById('score-input-row');
+        const currentRoundSpan = document.getElementById('current-round');
+        const roundInputsContainer = document.getElementById('round-inputs');
+        const addRoundButton = document.getElementById('add-round-button');
+        const roundError = document.getElementById('round-error');
+
+        const scoreTable = document.getElementById('score-table');
+        const tableHeaderRow = document.getElementById('table-header-row');
+        const scoreTableBody = document.getElementById('score-table-body');
+        const initialScoreRow = document.getElementById('initial-score-row'); // Get the initial score row
+        const totalScoreRow = document.getElementById('total-score-row');
+
+        const winnerDisplay = document.getElementById('winner-display');
+        const winnerText = document.getElementById('winner-text');
+
+        // --- Event Listeners ---
+        setupButton.addEventListener('click', handleSetupGame);
+        startGameButton.addEventListener('click', handleStartGame);
+        addRoundButton.addEventListener('click', handleAddRound);
+
+        // --- Functions ---
+
+        /**
+         * Handles the initial game setup based on the number of players.
+         */
+        function handleSetupGame() {
+            const numPlayers = parseInt(numPlayersInput.value);
+            setupError.textContent = ''; // Clear previous errors
+
+            if (isNaN(numPlayers) || numPlayers < 2 || numPlayers > 10) {
+                setupError.textContent = 'Please enter a number between 2 and 10.';
+                return;
+            }
+
+            // Reset previous game state if any
+            resetGame();
+
+            // Generate player name inputs
+            playerNameInputsContainer.innerHTML = ''; // Clear existing inputs
+            for (let i = 0; i < numPlayers; i++) {
+                const div = document.createElement('div');
+                const label = document.createElement('label');
+                label.htmlFor = `player-name-${i}`;
+                label.textContent = `Player ${i + 1} Name:`;
+                label.className = 'block text-sm font-medium text-gray-700 mb-1';
+
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.id = `player-name-${i}`;
+                // Added w-full for consistent width within the grid cell
+                input.className = 'block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2';
+                input.placeholder = `Player ${i + 1}`;
+                input.value = `Player ${i + 1}`; // Default name
+
+                div.appendChild(label);
+                div.appendChild(input);
+                playerNameInputsContainer.appendChild(div);
+            }
+
+            // Show player name section, hide setup section
+            setupSection.classList.add('hidden');
+            playerNamesSection.classList.remove('hidden');
+            scoreSection.classList.add('hidden'); // Ensure score section is hidden
+        }
+
+        /**
+         * Reads player names, initializes player data (starting at 66), and sets up the scoreboard.
+         */
+        function handleStartGame() {
+            const nameInputs = playerNameInputsContainer.querySelectorAll('input[type="text"]');
+            players = []; // Clear existing players
+
+            nameInputs.forEach((input, index) => {
+                players.push({
+                    name: input.value.trim() || `Player ${index + 1}`, // Use default if empty
+                    scores: [], // Stores the points *subtracted* each round
+                    total: STARTING_SCORE // Start at 66
+                });
+            });
+
+            setupScoreboard();
+
+            // Show score section, hide player name section
+            playerNamesSection.classList.add('hidden');
+            scoreSection.classList.remove('hidden');
+            winnerDisplay.classList.add('hidden'); // Hide winner display initially
+        }
+
+        /**
+         * Sets up the table headers, initial score row, and initial score input fields.
+         */
+        function setupScoreboard() {
+            // Clear previous table headers and totals (except 'Round'/'Start')
+            while (tableHeaderRow.children.length > 1) {
+                tableHeaderRow.removeChild(tableHeaderRow.lastChild);
+            }
+            while (totalScoreRow.children.length > 1) {
+                totalScoreRow.removeChild(totalScoreRow.lastChild);
+            }
+             // Clear previous initial score cells (except 'Start')
+            while (initialScoreRow.children.length > 1) {
+                initialScoreRow.removeChild(initialScoreRow.lastChild);
+            }
+
+            // Clear score rows except the initial one
+            const rows = scoreTableBody.querySelectorAll('tr');
+            rows.forEach(row => {
+                if (row.id !== 'initial-score-row') {
+                    scoreTableBody.removeChild(row);
+                }
+            });
+
+            roundInputsContainer.innerHTML = ''; // Clear previous round inputs
+
+            // Add player name headers, initial score cells, and total score cells
+            players.forEach((player, index) => {
+                // Table Header
+                const th = document.createElement('th');
+                th.scope = 'col';
+                 // Adjusted padding, added whitespace-nowrap
+                th.className = 'px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-300 whitespace-nowrap';
+                th.textContent = player.name;
+                tableHeaderRow.appendChild(th);
+
+                 // Initial Score Cell (in tbody)
+                const tdInitial = document.createElement('td');
+                 // Adjusted padding, added whitespace-nowrap
+                tdInitial.className = 'px-3 py-2 text-left text-sm text-gray-700 border-r border-gray-300 whitespace-nowrap';
+                tdInitial.textContent = STARTING_SCORE;
+                initialScoreRow.appendChild(tdInitial);
+
+
+                // Total Score Cell (in tfoot)
+                const tdTotal = document.createElement('td');
+                tdTotal.id = `total-score-${index}`;
+                 // Adjusted padding, added whitespace-nowrap
+                tdTotal.className = 'px-3 py-2 text-left text-sm text-gray-700 border-r border-gray-300 whitespace-nowrap';
+                tdTotal.textContent = STARTING_SCORE; // Initial total is starting score
+                totalScoreRow.appendChild(tdTotal);
+
+                // Round Score Input (Label above input for better mobile layout)
+                const inputDiv = document.createElement('div');
+                inputDiv.className = 'flex flex-col'; // Stack label and input vertically
+                const label = document.createElement('label');
+                label.htmlFor = `round-${roundNumber}-player-${index}`;
+                label.textContent = player.name;
+                label.className = 'text-sm font-medium text-gray-600 mb-1 whitespace-nowrap'; // Prevent label wrapping
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.id = `round-${roundNumber}-player-${index}`;
+                 // Use block for vertical layout, adjust padding
+                input.className = 'block rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2';
+                input.placeholder = 'Pts'; // Shorter placeholder
+                input.min = "0"; // Can only subtract 0 or positive points
+                inputDiv.appendChild(label);
+                inputDiv.appendChild(input);
+                roundInputsContainer.appendChild(inputDiv);
+            });
+             // Remove the last border from the header, initial, and total row
+            if(tableHeaderRow.lastChild) tableHeaderRow.lastChild.classList.remove('border-r');
+            if(initialScoreRow.lastChild) initialScoreRow.lastChild.classList.remove('border-r');
+            if(totalScoreRow.lastChild) totalScoreRow.lastChild.classList.remove('border-r');
+        }
+
+        /**
+         * Handles subtracting scores for the completed round.
+         */
+        function handleAddRound() {
+            if (gameOver) return; // Don't add rounds if game is over
+
+            const roundScoreInputs = roundInputsContainer.querySelectorAll('input[type="number"]');
+            const currentRoundScores = []; // Stores the points *subtracted*
+            roundError.textContent = ''; // Clear previous errors
+
+            // Validate and collect scores
+            let validInput = true;
+            roundScoreInputs.forEach((input, index) => {
+                const score = parseInt(input.value);
+                 // Score must be a non-negative number to subtract
+                if (isNaN(score) || score < 0) {
+                    validInput = false;
+                    // Find the corresponding label text for the error message
+                    const label = input.previousElementSibling;
+                    const playerName = label ? label.textContent : `Player ${index + 1}`;
+                    roundError.textContent = `Please enter a valid non-negative number for ${playerName}.`;
+                    input.focus(); // Focus the invalid input
+                }
+                currentRoundScores.push(isNaN(score) || score < 0 ? 0 : score); // Store 0 if invalid for now
+            });
+
+            if (!validInput) {
+                return; // Stop if any input is invalid
+            }
+
+            // Subtract scores from player data and update totals
+            let scoreLimitReached = false;
+            players.forEach((player, index) => {
+                const scoreToSubtract = currentRoundScores[index];
+                player.scores.push(scoreToSubtract); // Store the subtracted amount
+                player.total -= scoreToSubtract; // SUBTRACT the score
+                if (player.total <= LOSING_SCORE_LIMIT) {
+                    scoreLimitReached = true;
+                }
+            });
+
+            // Add row to the score table (showing the points subtracted)
+            addTableRow(roundNumber, currentRoundScores);
+
+            // Update total score display (remaining points)
+            updateTotalScores();
+
+            // Check for game over condition
+            if (scoreLimitReached) {
+                endGame();
+            } else {
+                // Prepare for the next round
+                roundNumber++;
+                currentRoundSpan.textContent = roundNumber;
+                // Clear input fields for the next round
+                roundScoreInputs.forEach(input => input.value = '');
+                // Update input IDs and labels for the new round
+                 roundScoreInputs.forEach((input, index) => {
+                    input.id = `round-${roundNumber}-player-${index}`;
+                    const label = input.previousElementSibling;
+                    if (label) {
+                        label.htmlFor = `round-${roundNumber}-player-${index}`;
+                        // Label text (player name) doesn't need to change unless names are editable later
+                    }
+                 });
+                roundScoreInputs[0]?.focus(); // Focus the first input for the next round
+            }
+        }
+
+        /**
+         * Adds a new row to the score table body showing points subtracted.
+         * @param {number} roundNum - The round number for this row.
+         * @param {number[]} scores - An array of scores *subtracted* for the round.
+         */
+        function addTableRow(roundNum, scores) {
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-gray-50';
+
+            // Round number cell
+            const tdRound = document.createElement('td');
+             // Adjusted padding, added whitespace-nowrap
+            tdRound.className = 'px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900 border-r border-gray-300';
+            tdRound.textContent = roundNum;
+            tr.appendChild(tdRound);
+
+            // Player score cells (showing points subtracted)
+            scores.forEach((score, index) => {
+                const tdScore = document.createElement('td');
+                 // Adjusted padding, added whitespace-nowrap
+                tdScore.className = 'px-3 py-2 whitespace-nowrap text-sm text-gray-500 border-r border-gray-300';
+                tdScore.textContent = `-${score}`; // Display as negative to show subtraction
+                // Highlight if this score pushed the player to 0 or below
+                if (players[index].total <= LOSING_SCORE_LIMIT && players[index].total + score > LOSING_SCORE_LIMIT) {
+                     // Check if the score *before* subtraction was above the limit
+                     tdScore.classList.add('score-zero-indicator');
+                }
+                tr.appendChild(tdScore);
+            });
+             // Remove the last border
+            if(tr.lastChild) tr.lastChild.classList.remove('border-r');
+
+            scoreTableBody.appendChild(tr);
+        }
+
+        /**
+         * Updates the total score row (remaining points) in the table footer.
+         */
+        function updateTotalScores() {
+            players.forEach((player, index) => {
+                const totalCell = document.getElementById(`total-score-${index}`);
+                if (totalCell) {
+                    totalCell.textContent = player.total;
+                     // Add indicator if player reached the limit (0 or less)
+                    if(player.total <= LOSING_SCORE_LIMIT) {
+                        totalCell.classList.add('score-zero-indicator');
+                    } else {
+                        // Ensure indicator is removed if score goes back up (unlikely in 6 nimmt, but good practice)
+                        totalCell.classList.remove('score-zero-indicator');
+                    }
+                }
+            });
+        }
+
+        /**
+         * Determines the winner (highest score >= 0), displays the result, and disables further input.
+         */
+        function endGame() {
+            gameOver = true;
+            addRoundButton.disabled = true;
+            addRoundButton.classList.add('opacity-50', 'cursor-not-allowed');
+            roundInputsContainer.querySelectorAll('input').forEach(input => input.disabled = true);
+            scoreInputRow.classList.add('opacity-70'); // Dim the input row
+
+            // Find the maximum score (must be >= 0, players below 0 cannot win)
+            let maxScore = -Infinity; // Start below 0
+            players.forEach(player => {
+                // Only consider players with scores >= 0 for winning
+                 if (player.total >= 0 && player.total > maxScore) {
+                     maxScore = player.total;
+                 } else if (player.total < 0 && maxScore === -Infinity) {
+                     // If all players are below zero, the one closest to zero (least negative) wins.
+                     // This is equivalent to the highest score among them.
+                     if (player.total > maxScore) {
+                         maxScore = player.total;
+                     }
+                 }
+            });
+
+             // Handle edge case where all scores might be negative. The highest score (closest to 0) wins.
+             if (maxScore === -Infinity) {
+                 // This case should only happen if all players somehow start below 0, which isn't possible here.
+                 // But as a fallback, find the absolute highest score.
+                 players.forEach(player => {
+                    if (player.total > maxScore) {
+                        maxScore = player.total;
+                    }
+                 });
+             }
+
+
+            // Find all players with the maximum score
+            const winners = players.filter(player => player.total === maxScore);
+
+            // Highlight winners in the total score row
+            players.forEach((player, index) => {
+                const totalCell = document.getElementById(`total-score-${index}`);
+                 if (totalCell && player.total === maxScore) {
+                    totalCell.classList.add('winner'); // Apply winner style
+                    totalCell.classList.remove('score-zero-indicator'); // Winner style takes precedence over zero indicator
+                }
+            });
+
+
+            // Display winner message
+            if (winners.length === 1) {
+                winnerText.textContent = `${winners[0].name} wins with ${maxScore} points remaining!`;
+            } else if (winners.length > 1) {
+                const winnerNames = winners.map(p => p.name).join(' and ');
+                winnerText.textContent = `It's a tie between ${winnerNames} with ${maxScore} points remaining!`;
+            } else {
+                 // This should ideally not happen with the logic above
+                 winnerText.textContent = "Game over! Couldn't determine a winner.";
+            }
+            winnerDisplay.classList.remove('hidden');
+        }
+
+        /**
+         * Resets the game state to the initial setup.
+         */
+        function resetGame() {
+            players = [];
+            roundNumber = 1;
+            gameOver = false;
+
+            // Reset UI elements
+            setupSection.classList.remove('hidden');
+            playerNamesSection.classList.add('hidden');
+            scoreSection.classList.add('hidden');
+            winnerDisplay.classList.add('hidden');
+
+            playerNameInputsContainer.innerHTML = '';
+
+             // Clear score rows except the initial one template
+            const rows = scoreTableBody.querySelectorAll('tr');
+            rows.forEach(row => {
+                if (row.id !== 'initial-score-row') {
+                    scoreTableBody.removeChild(row);
+                }
+            });
+             // Clear cells from initial score row template
+             while (initialScoreRow.children.length > 1) {
+                initialScoreRow.removeChild(initialScoreRow.lastChild);
+            }
+
+
+            roundInputsContainer.innerHTML = '';
+            // Reset header (ensure whitespace-nowrap is included)
+            tableHeaderRow.innerHTML = '<th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-300 whitespace-nowrap">Round</th>';
+            // Reset footer text (ensure whitespace-nowrap is included)
+            totalScoreRow.innerHTML = '<td class="px-3 py-2 text-left text-sm text-gray-700 border-r border-gray-300 whitespace-nowrap">Remaining</td>';
+
+            numPlayersInput.value = '4'; // Reset default player count
+            setupError.textContent = '';
+            roundError.textContent = '';
+
+            addRoundButton.disabled = false;
+            addRoundButton.classList.remove('opacity-50', 'cursor-not-allowed');
+            scoreInputRow.classList.remove('opacity-70');
+            currentRoundSpan.textContent = '1';
+        }
+
+    </script>
+</body>
+</html>
